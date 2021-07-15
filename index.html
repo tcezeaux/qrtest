@@ -1,0 +1,285 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <title>Disney ID UI v2 - Example Integration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css" rel="stylesheet">
+    <style type="text/css">
+        .usernav li a {
+            margin-top: 5px;
+            cursor: pointer
+        }
+
+        .navbar-fixed-top {
+            z-index: 0
+        }
+
+        .loggedIn {
+            display: none
+        }
+
+        .flow {
+            display: none
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
+</head>
+
+<body>
+    <nav class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+        <div class="container">
+            <div class="navbar-header">
+                <a class="navbar-brand" href="#">Your Device</a>
+            </div>
+        </div>
+    </nav>
+    <div class="jumbotron">
+        <div class="container">
+            <h1>Register using QR Code</h1>
+            <p>To register your device, go to <a target="_blank" href="activate.html">activate.html</a> and scan the
+                following code.</p>
+            <img src="" id="canvas" />
+            <p><a class="btn btn-primary loggedOut new-code" href="#" role="button">Generate New Code</a></p>
+
+        </div>
+    </div>
+    <div class="container">
+        <div class="row" id="result">
+        </div>
+        <footer>
+            <center>&copy; Disney 2021</center>
+        </footer>
+    </div>
+
+    <script type="text/javascript" src="./node_modules/qrcode/build/qrcode.min.js"></script>
+
+    <script type="text/javascript">
+
+        /*------------------------------------------------------*
+         *   OneID License Plate activation sample 
+         * - * - * - * - * - * - * - * - * - * - * - * - *
+         *   For More Info, please ready the documentation @
+         *   https://devcentral.disney.com/pages/viewpage.action?pageId=32768109
+         *------------------------------------------------------*/
+        var apikey = null;
+        var licensePlateData = null;
+
+
+        /**
+        * Contact GC to get a license plate code
+        * @returns {Promise}
+        */
+        function generateCode() {
+            var body = {
+                ttl: 600,  // # of seconds the code will be valid for
+                content: {  // any metadata you want to pass
+                    whatever: "you want"
+                }
+            }
+
+            return new Promise((resolve, reject) => {
+                // get an APIKEY before making other GC calls
+                fetch('https://stg.registerdisney.go.com/jgc/v6/client/LPTEST-LICENSE.PLATE.DEMO.WEB-STAGE/api-key', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                    .then(response => {
+                        var apikey = response.headers.get('api-key');
+                        // call GC to get a license plate code
+                        fetch('https://stg.registerdisney.go.com/jgc/v6/client/LPTEST-LICENSE.PLATE.DEMO.WEB-STAGE/license-plate', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `APIKEY ${apikey}`
+                            },
+                            body: JSON.stringify(body)
+                        })
+                            .then(response => response.json())
+                            .then(response => {
+                                resolve(response.data);
+                                console.log(response);
+                            })
+                    })
+            })
+        }
+
+        /**
+        * Open a websocket and listen for an activation event
+        * @param {object} object with websocket information
+        */
+        function waitForActivation(socket) {
+            const { fastCastHost, fastCastProfileId, fastCastTopic } = socket;
+            return new Promise((resolve, reject) => {
+                // start listening on a Websocket for the activiation event
+                getWsUrl(fastCastHost, fastCastProfileId).then(wsUrl => {
+                    waitForLogin(fastCastTopic, wsUrl).then(payload => {
+                        // exchange the refresh token returned in the Websocket event for a new session on the device
+                        fetch('https://stg.registerdisney.go.com/jgc/v6/client/LPTEST-LICENSE.PLATE.DEMO.WEB-STAGE/guest/login/refreshToken', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `APIKEY ${apikey}`
+                            },
+                            body: JSON.stringify({ refreshToken: payload.refresh_token })
+                        })
+                            .then(response => response.json())
+                            .then(response => {
+                                console.log(response);
+                                resolve(response.data);
+                            })
+                    })
+                })
+
+            })
+        }
+
+
+
+        /**
+         * Get an activation code and listen on a socket for the response
+         */
+        function doLicensePlateFlow() {
+            // get license plate code
+            generateCode().then(response => {
+                const { pairingCode } = response;
+                // display the pairing (license-plate) code on-screen for user to see
+                QRCode.toDataURL(pairingCode, { width: 300}, function (error, url) {
+                    if (error) console.error(error)
+                    if (!error) $('#canvas')[0].src = url;
+                })
+
+
+                $(".code").text(pairingCode)
+                // wait for websocket event indicating successful activation
+                waitForActivation(response).then(guest => {
+                    // you now have a new session and full guest information
+                    console.log(guest);
+                    if (guest.profile.swid) {
+                        console.log('SUCCESS');
+                        // show the user information on-screen
+                        $("#result").html(`<h2>SUCCESS</h2><pre>${JSON.stringify(guest, null, 4)}</pre>`);
+                    }
+
+                })
+            });
+
+        }
+
+        $(document).ready(() => {
+            console.log("ready!");
+            // enable user to generate a new code if the old one has expired
+            $('.new-code').on('click', () => { doLicensePlateFlow(); });
+            showUserLoggedOut();
+            doLicensePlateFlow(); // initialize license plate on load
+        });
+
+        /**
+         * show/hide elements when user is logged in
+         * @param {object} guestObject
+         */
+        function showUserLoggedIn(guest) {
+            console.log("Event: login");
+            console.log("showUserLoggedIn:" + guest);
+            $(".loggedOut").hide();
+        }
+
+        /**
+         * show/hide elements when user is logged out
+         */
+        function showUserLoggedOut() {
+            console.log("Event: logout");
+            console.log("showUserLoggedOut:");
+            console.log("Logged Out");
+            $(".loggedOut").show();
+        }
+        function showError(err) {
+            console.log("Event: error");
+            console.log("Error:" + JSON.stringify(err, null, 4));
+        }
+    </script>
+    <script>
+        /*----------------------------------------------
+        WebSocket utility functions
+        ------------------------------------------------*/
+
+        /**
+         * Get websocket URL to list on for this activation
+         *
+         * @return {Promise}
+         */
+        async function getWsUrl(fastCastHost, fastCastProfileId, fastCastTopic) {
+            return new Promise((resolve, reject) => {
+                fetch(fastCastHost + '/FastcastService/pubsub/profiles/' + encodeURIComponent(fastCastProfileId) + '/public/websockethost')
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (data.ip) {
+                            resolve('wss://' + data.ip + ':' + data.securePort + '/FastcastService/pubsub/profiles/' + encodeURIComponent(fastCastProfileId) + '?TrafficManager-Token=' + encodeURIComponent(data.token));
+                        } else {
+                            reject(data);
+                        }
+                    });
+            });
+        }
+
+
+        /**
+         * Opens a websocket to Fastcast and waits for login
+         *
+         * @return {Promise}
+         */
+        async function waitForLogin(topic, wsUrl) {
+            return new Promise((resolve) => {
+                var ws = new WebSocket(wsUrl);
+
+                ws.addEventListener('open', () => {
+                    console.log('connected opened');
+
+                    // connect to fastcast
+                    ws.send(JSON.stringify({
+                        op: 'C'
+                    }));
+                });
+
+                ws.addEventListener('message', (message) => {
+                    var data = JSON.parse(message.data);
+                    console.log('received message,', data);
+
+                    // in response to 'CONNECT' call,
+                    // we need to subscribe to a topic
+                    if (data.op === 'C') {
+                        ws.send(JSON.stringify({
+                            tc: topic,
+                            op: 'S',
+                            sid: data.sid
+                        }));
+                    }
+
+                    // test for activation success
+                    if (data.pl) {
+                        var pl = JSON.parse(data.pl);
+                        if (pl && pl.refresh_token) {
+                            resolve(pl);
+                            console.log('SUCCESS: ' + pl.refresh_token)
+                        }
+                    }
+                });
+
+                ws.addEventListener('close', () => {
+                    console.log('closed');
+                    if (ws && ws.close) {
+                        ws.close();
+                        ws = null;
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+
+</html>

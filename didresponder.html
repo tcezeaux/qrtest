@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head id="head">
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <title>Disney ID Responder</title>
+<script>
+    // URL for each environment
+	var urls = {
+		"QA": "https://ui-qa.registerdisney.go.com/v2/responder/responder.js",
+		"STG": "https://stg.cdn.registerdisney.go.com/v2/responder/responder.js",
+		"VAL": "https://ui-val.registerdisney.go.com/v2/responder/responder.js",
+		"PROD": "https://cdn.registerdisney.go.com/v2/responder/responder.js"
+	};
+	
+    // get query params
+    var params = new URLSearchParams(window.location.search);  
+    // get config param which stores environemnt name
+    var env = params.get("config");
+    // get clientID
+    var client = params.get("clientId");
+    // create script tag to load proper responder.js 
+    var newScript = document.createElement("script");
+    // set source of script based on environment
+    // add clientID to script to assist in v2 -> v4 migration
+    newScript.src = `${urls[env]}?clientID=${client}`;
+    // add script tag so that responder.js gets loaded
+    document.getElementById("head").appendChild(newScript);
+</script>
+</head>
+
+<body>
+</body>
+</html>

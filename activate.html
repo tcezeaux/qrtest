@@ -44,10 +44,10 @@
 </div>
 <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
 <script>
-
+/*
 const html5QrCode = new Html5Qrcode("reader");
 const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-    /* handle success */
+    //handle success 
     console.log(`Code matched = ${decodedText}`, decodedResult);
   if (decodedText.length == 6) {
     html5QrCode.stop();
@@ -60,6 +60,17 @@ const qrCodeSuccessCallback = (decodedText, decodedResult) => {
 
 // If you want to prefer back camera
 html5QrCode.start({ facingMode: "environment" }, {fps: 10}, qrCodeSuccessCallback);
+*/
+
+function onScanSuccess(decodedText, decodedResult) {
+    if (decodedText.length == 6) {
+        did.launchLicensePlate({pairingCode: decodedText});
+    }
+}
+
+var html5QrcodeScanner = new Html5QrcodeScanner(
+    "reader", { fps: 10});
+html5QrcodeScanner.render(onScanSuccess);
 
 
 

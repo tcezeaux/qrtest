@@ -47,7 +47,15 @@
 
 function onScanSuccess(decodedText, decodedResult) {
     if (decodedText.length == 6) {
-        did.launchLicensePlate({pairingCode: decodedText});
+        // call getLicensePlateDataBag to verify that pairing code is a valid OneID code
+        did.getLicensePlateDataBag({pairingCode: decodedText})
+        .then(function(data){
+            // validate that this license plate code is from your OTT application
+            if (data.hasOwnProperty("source") && data.source == "ESPN+") {
+                did.launchLicensePlate({pairingCode: decodedText});
+                console.log(data);
+            }
+        })
     }
 }
 
@@ -108,21 +116,6 @@ html5QrcodeScanner.render(onScanSuccess);
      * 4. Do stuff (show guest/authenticated specific data, enable buttons)
      */
     function enableButtons(){
-        // when Submit button is pressed, get code and call did.launchLicensePlate to complete activation
-        $('.submit').on('click', () => { 
-            var obj = {
-                // get code entered into input field
-                pairingCode: $(".code")[0].value
-            }
-            did.launchLicensePlate(obj).then((d) => {
-                console.log(d);
-				showMessage("Check your device.  Authentication should be completed.");
-                // close window since pairing is complete
-                window.close();
-            });
-        });
-        
-
         $('.signin').on('click', () => { did.launchIdentityFlow() });
         $('.profile').on('click', function(){ did.launchProfile() });
         $('.signout').on('click', function(){ did.logout() });
